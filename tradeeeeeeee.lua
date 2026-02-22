@@ -1,8 +1,9 @@
--- Advanced Name Changer Script для Roblox
--- Глубокая замена имён во всех элементах игры
+-- Advanced Name & Avatar Changer Script для Roblox
+-- Глубокая замена имён и аватарок во всех элементах игры
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Создаём ScreenGui
@@ -22,6 +23,13 @@ MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
+-- Скрыть/Показать на Левый Ctrl
+UserInputService.InputBegan:Connect(function(input, processed)
+    if not processed and input.KeyCode == Enum.KeyCode.LeftControl then
+        MainFrame.Visible = not MainFrame.Visible
+    end
+end)
+
 -- Скругление углов
 local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 10)
@@ -34,9 +42,9 @@ Title.Size = UDim2.new(1, 0, 0, 30)
 Title.Position = UDim2.new(0, 0, 0, 0)
 Title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 Title.BorderSizePixel = 0
-Title.Text = "Advanced Name Changer"
+Title.Text = "Advanced Changer (L-CTRL)"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 16
+Title.TextSize = 14
 Title.Font = Enum.Font.GothamBold
 Title.Parent = MainFrame
 
@@ -103,6 +111,7 @@ ChangeToTextBox.Parent = MainFrame
 local ChangeToTextBoxCorner = Instance.new("UICorner")
 ChangeToTextBoxCorner.CornerRadius = UDim.new(0, 6)
 ChangeToTextBoxCorner.Parent = ChangeToTextBox
+
 -- Change Button
 local ChangeButton = Instance.new("TextButton")
 ChangeButton.Name = "ChangeButton"
@@ -142,27 +151,53 @@ local autoChangeEnabled = false
 local autoChangeConnection = nil
 local lastUpdate = 0
 
+-- КЭШ для Аватарок
+local cachedTargetUser = ""
+local cachedNewName = ""
+local targetUserId = 0
+local newUserId = 0
+
+-- Получаем ID пользователей для замены аватарок
+local function UpdateUserIDs(targetName, newName)
+    if targetName ~= cachedTargetUser or newName ~= cachedNewName then
+        cachedTargetUser = targetName
+        cachedNewName = newName
+        pcall(function()
+            targetUserId = Players:GetUserIdFromNameAsync(targetName)
+            newUserId = Players:GetUserIdFromNameAsync(newName)
+        end)
+    end
+end
+
 -- Функция для проверки совпадения текста
 local function TextMatches(text, targetUsername)
     if not text or not targetUsername then return false end
     local lowerText = string.lower(tostring(text))
     local lowerTarget = string.lower(targetUsername)
     
-    -- Проверяем точное совпадение или частичное
     return lowerText == lowerTarget or 
            string.find(lowerText, lowerTarget, 1, true) or
            lowerText:match(lowerTarget)
 end
 
+-- Функция для замены картинки
+local function ReplaceImageCheck(obj)
+    if (obj:IsA("ImageLabel") or obj:IsA("ImageButton")) and targetUserId > 0 and newUserId > 0 then
+        if string.find(tostring(obj.Image), tostring(targetUserId)) then
+            -- Меняем на аватарку нового пользователя
+            obj.Image = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(newUserId) .. "&w=150&h=150"
+            return true
+        end
+    end
+    return false
+end
+
 -- Глубокая функция замены везде
 local function DeepReplaceEverywhere(targetUsername, newName)
-    if targetUsername == "" or newName == "" then
-        return
-    end
-    
+    if targetUsername == "" or newName == "" then return end
     local replacedCount = 0
     
-    -- 1. ЗАМЕНА В WORKSPACE (все объекты в мире)
+    -- 1. ЗАМЕНА В WORKSPACE
     pcall(function()
         for _, obj in pairs(game.Workspace:GetDescendants()) do
             if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
@@ -171,26 +206,20 @@ local function DeepReplaceEverywhere(targetUsername, newName)
                     replacedCount = replacedCount + 1
                 end
             end
+            if ReplaceImageCheck(obj) then replacedCount = replacedCount + 1 end
             
-            -- Humanoid DisplayName
-            if obj:IsA("Humanoid") then
-                if TextMatches(obj.DisplayName, targetUsername) then
-                    obj.DisplayName = newName
-                    replacedCount = replacedCount + 1
-                end
+            if obj:IsA("Humanoid") and TextMatches(obj.DisplayName, targetUsername) then
+                obj.DisplayName = newName
+                replacedCount = replacedCount + 1
             end
-            
-            -- Model Name
-            if obj:IsA("Model") then
-                if TextMatches(obj.Name, targetUsername) then
-                    obj.Name = newName
-                    replacedCount = replacedCount + 1
-                end
+            if obj:IsA("Model") and TextMatches(obj.Name, targetUsername) then
+                obj.Name = newName
+                replacedCount = replacedCount + 1
             end
         end
     end)
     
-    -- 2. ЗАМЕНА В LEADERBOARD (Таблица лидеров)
+    -- 2. ЗАМЕНА В LEADERBOARD
     pcall(function()
         local playerList = game:GetService("CoreGui"):FindFirstChild("PlayerList")
         if playerList then
@@ -201,6 +230,7 @@ local function DeepReplaceEverywhere(targetUsername, newName)
                         replacedCount = replacedCount + 1
                     end
                 end
+                if ReplaceImageCheck(obj) then replacedCount = replacedCount + 1 end
             end
         end
     end)
@@ -212,11 +242,12 @@ local function DeepReplaceEverywhere(targetUsername, newName)
             if playerGui then
                 for _, obj in pairs(playerGui:GetDescendants()) do
                     if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
-if TextMatches(obj.Text, targetUsername) then
+                        if TextMatches(obj.Text, targetUsername) then
                             obj.Text = newName
                             replacedCount = replacedCount + 1
                         end
                     end
+                    if ReplaceImageCheck(obj) then replacedCount = replacedCount + 1 end
                 end
             end
         end
@@ -237,13 +268,17 @@ if TextMatches(obj.Text, targetUsername) then
                             username.Text = newName
                             replacedCount = replacedCount + 1
                         end
+                        -- Проверка аватарок в этом же окне
+                        for _, obj in pairs(tradePath.Parent:GetDescendants()) do
+                            if ReplaceImageCheck(obj) then replacedCount = replacedCount + 1 end
+                        end
                     end
                 end
             end
         end
     end)
     
-    -- 5. ЗАМЕНА В StarterGui (влияет на новые GUI)
+    -- 5. ЗАМЕНА В StarterGui
     pcall(function()
         for _, obj in pairs(game:GetService("StarterGui"):GetDescendants()) do
             if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
@@ -252,6 +287,7 @@ if TextMatches(obj.Text, targetUsername) then
                     replacedCount = replacedCount + 1
                 end
             end
+            if ReplaceImageCheck(obj) then replacedCount = replacedCount + 1 end
         end
     end)
     
@@ -266,12 +302,13 @@ if TextMatches(obj.Text, targetUsername) then
                             replacedCount = replacedCount + 1
                         end
                     end
+                    if ReplaceImageCheck(child) then replacedCount = replacedCount + 1 end
                 end
             end
         end
     end)
     
-    -- 7. ЗАМЕНА В CHAT (если доступно)
+    -- 7. ЗАМЕНА В CHAT
     pcall(function()
         local chat = game:GetService("CoreGui"):FindFirstChild("ExperienceChat")
         if chat then
@@ -282,6 +319,7 @@ if TextMatches(obj.Text, targetUsername) then
                         replacedCount = replacedCount + 1
                     end
                 end
+                if ReplaceImageCheck(obj) then replacedCount = replacedCount + 1 end
             end
         end
     end)
@@ -295,6 +333,8 @@ if TextMatches(obj.Text, targetUsername) then
                     replacedCount = replacedCount + 1
                 end
             end
+            if ReplaceImageCheck(obj) then replacedCount = replacedCount + 1 end
+            
             if obj:IsA("StringValue") or obj:IsA("Configuration") then
                 if TextMatches(obj.Value, targetUsername) then
                     obj.Value = newName
@@ -310,17 +350,16 @@ if TextMatches(obj.Text, targetUsername) then
             if TextMatches(player.Name, targetUsername) or TextMatches(player.DisplayName, targetUsername) then
                 local character = player.Character
                 if character then
-                    -- Меняем все текстовые элементы в персонаже
                     for _, obj in pairs(character:GetDescendants()) do
                         if obj:IsA("TextLabel") or obj:IsA("TextButton") then
                             if TextMatches(obj.Text, targetUsername) then
-obj.Text = newName
+                                obj.Text = newName
                                 replacedCount = replacedCount + 1
                             end
                         end
+                        if ReplaceImageCheck(obj) then replacedCount = replacedCount + 1 end
                     end
                     
-                    -- Humanoid
                     local humanoid = character:FindFirstChildOfClass("Humanoid")
                     if humanoid then
                         humanoid.DisplayName = newName
@@ -336,26 +375,23 @@ end
 
 -- Функция для создания постоянных мониторов новых объектов
 local function SetupContinuousMonitoring(targetUsername, newName)
-    -- Мониторинг новых объектов во всей игре
     local connection1 = game.DescendantAdded:Connect(function(obj)
-        task.wait(0.1) -- Небольшая задержка для инициализации
+        task.wait(0.1)
         pcall(function()
             if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
                 if TextMatches(obj.Text, targetUsername) then
                     obj.Text = newName
                 end
-                
-                -- Отслеживаем изменения свойства Text
                 obj:GetPropertyChangedSignal("Text"):Connect(function()
                     if TextMatches(obj.Text, targetUsername) then
                         obj.Text = newName
                     end
                 end)
             end
+            ReplaceImageCheck(obj)
         end)
     end)
     
-    -- Мониторинг изменений в TradeLiveTrade
     local connection2 = RunService.Heartbeat:Connect(function()
         pcall(function()
             local username = LocalPlayer.PlayerGui:FindFirstChild("TradeLiveTrade")
@@ -364,10 +400,10 @@ local function SetupContinuousMonitoring(targetUsername, newName)
                 if username then
                     username = username:FindFirstChild("Other")
                     if username then
-                        username = username:FindFirstChild("Username")
-                        if username and username:IsA("TextLabel") then
-                            if TextMatches(username.Text, targetUsername) or username.Text ~= newName then
-                                username.Text = newName
+                        local txt = username:FindFirstChild("Username")
+                        if txt and txt:IsA("TextLabel") then
+                            if TextMatches(txt.Text, targetUsername) or txt.Text ~= newName then
+                                txt.Text = newName
                             end
                         end
                     end
@@ -391,100 +427,63 @@ ChangeButton.MouseButton1Click:Connect(function()
         return
     end
     
+    UpdateUserIDs(targetUser, newName)
     local count = DeepReplaceEverywhere(targetUser, newName)
-    print("✅ Заменено элементов: " .. count)
+    print("✅ Заменено элементов (текст + картинки): " .. count)
 end)
+
 -- Обработчик кнопки Auto Change
 AutoChangeButton.MouseButton1Click:Connect(function()
     autoChangeEnabled = not autoChangeEnabled
     
     if autoChangeEnabled then
-        AutoChangeButton.Text = "Auto Change: ON"
-        AutoChangeButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
-        
         local targetUser = UserTextBox.Text
         local newName = ChangeToTextBox.Text
         
         if targetUser == "" or newName == "" then
             warn("Заполните оба поля перед включением Auto Change!")
             autoChangeEnabled = false
-            AutoChangeButton.Text = "Auto Change: OFF"
-            AutoChangeButton.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
             return
         end
         
-        -- Настраиваем постоянный мониторинг
+        AutoChangeButton.Text = "Auto Change: ON"
+        AutoChangeButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
+        
+        UpdateUserIDs(targetUser, newName)
         monitorConnection1, monitorConnection2 = SetupContinuousMonitoring(targetUser, newName)
         
-        -- Запускаем автоматическое изменение каждую секунду
         autoChangeConnection = RunService.Heartbeat:Connect(function()
             local currentTime = tick()
-            if currentTime - lastUpdate >= 1 then -- Каждую секунду
+            if currentTime - lastUpdate >= 1 then
                 lastUpdate = currentTime
-                
                 if autoChangeEnabled then
                     local targetUserCurrent = UserTextBox.Text
                     local newNameCurrent = ChangeToTextBox.Text
-                    
                     if targetUserCurrent ~= "" and newNameCurrent ~= "" then
+                        UpdateUserIDs(targetUserCurrent, newNameCurrent)
                         DeepReplaceEverywhere(targetUserCurrent, newNameCurrent)
                     end
                 end
             end
         end)
-        
         print("🔄 Auto Change включен! Замена каждую секунду...")
-        
     else
         AutoChangeButton.Text = "Auto Change: OFF"
         AutoChangeButton.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
         
-        -- Останавливаем все соединения
-        if autoChangeConnection then
-            autoChangeConnection:Disconnect()
-            autoChangeConnection = nil
-        end
-        
-        if monitorConnection1 then
-            monitorConnection1:Disconnect()
-            monitorConnection1 = nil
-        end
-        
-        if monitorConnection2 then
-            monitorConnection2:Disconnect()
-            monitorConnection2 = nil
-        end
-        
+        if autoChangeConnection then autoChangeConnection:Disconnect() autoChangeConnection = nil end
+        if monitorConnection1 then monitorConnection1:Disconnect() monitorConnection1 = nil end
+        if monitorConnection2 then monitorConnection2:Disconnect() monitorConnection2 = nil end
         print("⏸️ Auto Change выключен!")
     end
 end)
 
--- Эффекты при наведении на кнопки
-ChangeButton.MouseEnter:Connect(function()
-    ChangeButton.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
-end)
+-- Эффекты при наведении
+ChangeButton.MouseEnter:Connect(function() ChangeButton.BackgroundColor3 = Color3.fromRGB(0, 200, 255) end)
+ChangeButton.MouseLeave:Connect(function() ChangeButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255) end)
+AutoChangeButton.MouseEnter:Connect(function() AutoChangeButton.BackgroundColor3 = autoChangeEnabled and Color3.fromRGB(0, 230, 120) or Color3.fromRGB(255, 100, 100) end)
+AutoChangeButton.MouseLeave:Connect(function() AutoChangeButton.BackgroundColor3 = autoChangeEnabled and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(255, 70, 70) end)
 
-ChangeButton.MouseLeave:Connect(function()
-    ChangeButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-end)
-
-AutoChangeButton.MouseEnter:Connect(function()
-    if autoChangeEnabled then
-        AutoChangeButton.BackgroundColor3 = Color3.fromRGB(0, 230, 120)
-    else
-        AutoChangeButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-    end
-end)
-
-AutoChangeButton.MouseLeave:Connect(function()
-    if autoChangeEnabled then
-        AutoChangeButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
-    else
-        AutoChangeButton.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
-    end
-end)
-
--- Очистка при закрытии
 game:GetService("Players").PlayerRemoving:Connect(function(player)
     if player == LocalPlayer then
         if autoChangeConnection then autoChangeConnection:Disconnect() end
@@ -494,6 +493,6 @@ game:GetService("Players").PlayerRemoving:Connect(function(player)
 end)
 
 print("╔════════════════════════════════════╗")
-print("║  Advanced Name Changer загружен!  ║")
-print("║  Замена ВЕЗДЕ + TradeLiveTrade     ║")
+print("║  Advanced Name & Avatar Changer    ║")
+print("║  (Левый CTRL для скрытия меню)     ║")
 print("╚════════════════════════════════════╝")
