@@ -1853,11 +1853,6 @@ gradient.Color = ColorSequence.new{
     ColorSequenceKeypoint.new(1, Color3.fromRGB(10,10,10))
 }
 
--- Função de chat
-button.MouseButton1Click:Connect(function()
-    game:GetService("TextChatService").TextChannels.RBXGeneral:SendAsync("/AntiLoser on Top")
-end)
-
 local player = game.Players.LocalPlayer
 
 if player.Character then
